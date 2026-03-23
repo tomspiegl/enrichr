@@ -12,8 +12,8 @@ import { dirname } from "node:path";
 const args = process.argv.slice(2);
 let orgsFile = ".work/data_out/orgs.csv";
 let personsFile = ".work/data_out/persons.csv";
-let templateFile = "viewer.html";
-let outFile = "viewer.html";
+let templateFile = "viewer/viewer.html";
+let outFile = ".work/data_out/viewer.html";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--orgs" && args[i + 1]) orgsFile = args[++i];

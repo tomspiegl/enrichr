@@ -34,7 +34,6 @@ person-batch +args:
 
 viewer-build +args='':
     npx tsx viewer/build.ts {{args}}
-    cp viewer.html .work/data_out/viewer.html
 
 viewer-serve:
     #!/usr/bin/env bash
