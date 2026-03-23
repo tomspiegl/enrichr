@@ -13,7 +13,7 @@ const args = process.argv.slice(2);
 let orgsFile = ".work/data_out/orgs.csv";
 let personsFile = ".work/data_out/persons.csv";
 let templateFile = "viewer.html";
-let outFile = ".work/data_out/viewer.html";
+let outFile = "viewer.html";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--orgs" && args[i + 1]) orgsFile = args[++i];
@@ -27,13 +27,19 @@ const personsText = readFileSync(personsFile, "utf-8");
 const template = readFileSync(templateFile, "utf-8");
 
 // JSON.stringify handles all Unicode escaping correctly
-const dataScript = `
+const BEGIN_MARKER = '<!--ENRICHR_DATA_BEGIN-->';
+const END_MARKER = '<!--ENRICHR_DATA_END-->';
+const dataBlock = `${BEGIN_MARKER}
 <script>
 const EMBEDDED_ORGS_CSV = ${JSON.stringify(orgsText)};
 const EMBEDDED_PERSONS_CSV = ${JSON.stringify(personsText)};
-</script>`;
+</script>
+${END_MARKER}`;
 
-const html = template.replace("</head>", `${dataScript}\n</head>`);
+// Strip any previously embedded data (when template = output file)
+const markerRe = new RegExp(BEGIN_MARKER + '[\\s\\S]*?' + END_MARKER, 'g');
+const cleanTemplate = template.replace(markerRe, '');
+const html = cleanTemplate.replace("</head>", `${dataBlock}\n</head>`);
 
 mkdirSync(dirname(outFile), { recursive: true });
 writeFileSync(outFile, html);

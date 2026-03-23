@@ -25,7 +25,17 @@ tailwind.config = {
   .dark .highlight { background: #854d0e; color: #fef08a; }
   .truncate-cell { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   html, header, .ts { transition: background-color 0.2s, border-color 0.2s, color 0.2s; }
+  body.resizing { cursor: col-resize !important; user-select: none !important; }
+  body.resizing * { cursor: col-resize !important; user-select: none !important; }
 </style>
+
+
+
+
+
+
+
+
 </head>
 <body class="h-full bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
 
@@ -38,6 +48,7 @@ tailwind.config = {
     </div>
     <div class="flex items-center gap-3">
       <span id="stats" class="text-sm text-gray-500 dark:text-gray-400 hidden sm:inline"></span>
+      <button onclick="resetLayout()" title="Reset layout" class="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-base">↺</button>
       <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark mode"
         class="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
         <span id="theme-icon" class="text-base">🌙</span>
@@ -84,7 +95,7 @@ tailwind.config = {
   <!-- Content: split layout -->
   <div id="content" class="flex-1 flex overflow-hidden">
     <!-- Left: table list -->
-    <div id="list-pane" class="flex-1 overflow-auto px-6 py-4 min-w-0">
+    <div id="list-pane" class="flex-1 overflow-auto px-6 py-4" style="min-width:33%">
       <div id="table-container" class="ts bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -96,8 +107,11 @@ tailwind.config = {
       <div id="pagination" class="flex items-center justify-between py-4 text-sm text-gray-500 dark:text-gray-400"></div>
     </div>
 
+    <!-- Resize handle -->
+    <div id="resize-handle" class="hidden w-1.5 shrink-0 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-brand-400 dark:hover:bg-brand-600 active:bg-brand-500 transition-colors" onmousedown="startResize(event)"></div>
+
     <!-- Right: detail panel (shared for org and person) -->
-    <div id="detail-panel" class="hidden w-[680px] shrink-0 overflow-y-auto border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+    <div id="detail-panel" class="hidden shrink-0 overflow-y-auto bg-white dark:bg-gray-900">
       <!-- Sticky header -->
       <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
         <div class="flex items-center justify-between">
@@ -125,10 +139,41 @@ applyTheme(getTheme());
 function esc(s){if(!s)return '';const d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
 function clean(v){if(!v||v==='null')return null;let s=String(v).trim();if(s.startsWith('="')&&s.endsWith('"'))s=s.slice(2,-1);else if(s.startsWith('='))s=s.slice(1);return s||null}
 function cleanPhone(v){const s=clean(v);if(!s)return null;return s.replace(/[^+0-9]/g,'')}
+function resetLayout(){localStorage.removeItem('enrichr-detail-width');detailWidth=Math.round(window.innerWidth*0.4);applyDetailWidth();history.replaceState(null,null,' ')}
+const LI_SVG='<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>';
+function linkedinLink(v,size){if(!v)return '';const u=v.startsWith('http')?v:'https://'+v;return `<a href="${esc(u)}" target="_blank" title="${esc(v)}" class="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">${LI_SVG}<span class="text-xs">LinkedIn</span></a>`}
 
 // --- State ---
 let orgs=[],persons=[],currentTab='orgs',searchQuery='',currentPage=1;
+let detailWidth=parseInt(localStorage.getItem('enrichr-detail-width'))||Math.round(window.innerWidth*0.4);
 const PAGE_SIZE=50;
+
+// --- Resize ---
+function applyDetailWidth(){
+  const dp=document.getElementById('detail-panel');
+  if(dp&&!dp.classList.contains('hidden'))dp.style.width=detailWidth+'px';
+}
+function startResize(e){
+  e.preventDefault();
+  document.body.classList.add('resizing');
+  const startX=e.clientX,startW=detailWidth;
+  function onMove(e){
+    const dx=startX-e.clientX;
+    const maxW=Math.floor(window.innerWidth*0.66);
+    detailWidth=Math.max(300,Math.min(maxW,startW+dx));
+    applyDetailWidth();
+  }
+  function onUp(){
+    document.body.classList.remove('resizing');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    localStorage.setItem('enrichr-detail-width',detailWidth);
+    // Update URL state with width
+    const s=readState();s.dw=detailWidth;pushState(s);
+  }
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+}
 
 const ORG_COLS=[
   {key:'org_name',label:'Organization',w:'min-w-[200px]'},
@@ -174,7 +219,10 @@ function parseLine(line,sep){
 // --- Data Loading ---
 async function loadData(){
   if(typeof EMBEDDED_ORGS_CSV!=='undefined'&&typeof EMBEDDED_PERSONS_CSV!=='undefined'){applyData(EMBEDDED_ORGS_CSV,EMBEDDED_PERSONS_CSV);return}
-  try{const[o,p]=await Promise.all([fetch('data_out/orgs.csv').then(r=>{if(!r.ok)throw 0;return r.text()}),fetch('data_out/persons.csv').then(r=>{if(!r.ok)throw 0;return r.text()})]);applyData(o,p);return}catch{}
+  // Try multiple paths (works from project root or .work/)
+  for(const base of ['.work/data_out/','data_out/','']){
+    try{const[o,p]=await Promise.all([fetch(base+'orgs.csv').then(r=>{if(!r.ok)throw 0;return r.text()}),fetch(base+'persons.csv').then(r=>{if(!r.ok)throw 0;return r.text()})]);applyData(o,p);return}catch{}
+  }
   showFilePicker();
 }
 function applyData(o,p){
@@ -207,6 +255,7 @@ function restoreState(){
   if(s.tab&&s.tab!==currentTab){currentTab=s.tab;currentPage=1;searchQuery='';document.getElementById('search').value=''}
   if(s.q){searchQuery=s.q.toLowerCase();document.getElementById('search').value=s.q}
   if(s.page)currentPage=parseInt(s.page)||1;
+  if(s.dw){detailWidth=parseInt(s.dw)||680;localStorage.setItem('enrichr-detail-width',detailWidth)}
   render();
   if(s.org)showOrgDetail(s.org,true);
   else if(s.person&&s.site)showPersonDetailByKey(s.person,s.site,true);
@@ -258,7 +307,7 @@ function fc(v,col,row){
   if(col.key==='_pc'){return v>0?`<span class="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-xs font-semibold bg-brand-100 text-brand-700 dark:bg-brand-800/40 dark:text-brand-200">${v}</span>`:'<span class="text-gray-300 dark:text-gray-700">—</span>'}
   if(col.orgLink&&v){const o=orgs.find(o=>o.website_url===v);return `<a href="#" onclick="event.preventDefault();showOrgFromPersons('${esc(v)}')" class="text-brand-600 dark:text-brand-400 hover:underline font-medium">${esc(o?o.org_name:v.replace(/^www\./,''))}</a>`}
   if(col.link&&v){const u=v.startsWith('http')?v:'https://'+v;
-    if(col.key==='linkedin_url')return `<a href="${esc(u)}" target="_blank" title="${esc(v)}" class="inline-flex items-center gap-1 text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg><span class="text-xs">LinkedIn</span></a>`;
+    if(col.key==='linkedin_url')return linkedinLink(v);
     return `<a href="${esc(u)}" target="_blank" class="text-brand-600 dark:text-brand-400 hover:underline">${esc(v.replace(/^https?:\/\//,'').replace(/^www\./,''))}</a>`}
   if(searchQuery&&String(v).toLowerCase().includes(searchQuery)){return String(v).replace(new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi'),'<span class="highlight">$1</span>')}
   return esc(String(v));
@@ -277,7 +326,7 @@ function showOrgDetail(key,noHistory){
     {l:'Website',v:org.website_url,link:true},{l:'Address',v:org.address},
     {l:'UID',v:org.uid},{l:'FN',v:org.registry_number},
     {l:'Phone',v:cleanPhone(org.phone),phone:true},{l:'Email',v:org.email,email:true},
-    {l:'LinkedIn',v:org.linkedin_url,link:true},{l:'Label',v:org.label},
+    {l:'LinkedIn',v:org.linkedin_url,linkedin:true},{l:'Label',v:org.label},
   ];
   // Render into detail-content
   let html='<div class="grid grid-cols-2 gap-x-4 gap-y-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800 text-sm">';
@@ -286,6 +335,7 @@ function showOrgDetail(key,noHistory){
     if(f.link){const u=f.v.startsWith('http')?f.v:'https://'+f.v;val=`<a href="${esc(u)}" target="_blank" class="text-brand-600 dark:text-brand-400 hover:underline">${val}</a>`}
     if(f.email)val=`<a href="mailto:${esc(f.v)}" class="text-brand-600 dark:text-brand-400 hover:underline">${val}</a>`;
     if(f.phone)val=`<a href="tel:${esc(f.v)}" class="text-brand-600 dark:text-brand-400 hover:underline">${val}</a>`;
+    if(f.linkedin)val=linkedinLink(f.v);
     return `<div><div class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium">${f.l}</div><div class="mt-1 font-medium text-sm">${val}</div></div>`;
   }).join('');
   html+='</div>';
@@ -310,8 +360,7 @@ function showOrgDetail(key,noHistory){
   }
   html+='</div>';
   document.getElementById('detail-content').innerHTML=html;
-  document.getElementById('detail-panel').classList.remove('hidden');
-  document.getElementById('detail-panel').scrollTop=0;
+  openDetailPanel();
 }
 
 // --- Person Detail ---
@@ -347,7 +396,7 @@ function _showPersonDetail(p,noHistory){
     {l:'Email',v:p.email,email:true},
     {l:'Mobile',v:cleanPhone(p.phone_mobile),phone:true},
     {l:'Office',v:cleanPhone(p.phone_office),phone:true},
-    {l:'LinkedIn',v:p.linkedin_url,link:true},
+    {l:'LinkedIn',v:p.linkedin_url,linkedin:true},
     {l:'Website',v:p.website_url,weblink:true},
     {l:'Source Page',v:p.source_page,link:true},
     {l:'Label',v:p.label},
@@ -361,6 +410,7 @@ function _showPersonDetail(p,noHistory){
     if(f.email)val=`<a href="mailto:${esc(f.v)}" class="text-brand-600 dark:text-brand-400 hover:underline">${val}</a>`;
     if(f.phone)val=`<a href="tel:${esc(f.v)}" class="text-brand-600 dark:text-brand-400 hover:underline">${val}</a>`;
     if(f.weblink){const u=f.v.startsWith('http')?f.v:'https://'+f.v;val=`<a href="${esc(u)}" target="_blank" class="text-brand-600 dark:text-brand-400 hover:underline">${esc(f.v.replace(/^https?:\/\//,''))}</a>`}
+    if(f.linkedin)val=linkedinLink(f.v);
     return `<div><div class="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium">${f.l}</div><div class="mt-1 font-medium text-sm">${val}</div></div>`;
   }).join('');
   html+='</div>';
@@ -374,8 +424,7 @@ function _showPersonDetail(p,noHistory){
   }
 
   document.getElementById('detail-content').innerHTML=html;
-  document.getElementById('detail-panel').classList.remove('hidden');
-  document.getElementById('detail-panel').scrollTop=0;
+  openDetailPanel();
 }
 
 function personCard(p, isDm){
@@ -414,7 +463,17 @@ function personCard(p, isDm){
 }
 
 function showOrgFromPersons(url){currentTab='orgs';currentPage=1;searchQuery='';document.getElementById('search').value='';render();showOrgDetail(url)}
-function closeDetail(noHistory){document.getElementById('detail-panel').classList.add('hidden');if(!noHistory)pushState({tab:currentTab,q:searchQuery||undefined})}
+function openDetailPanel(){
+  document.getElementById('detail-panel').classList.remove('hidden');
+  document.getElementById('resize-handle').classList.remove('hidden');
+  applyDetailWidth();
+  document.getElementById('detail-panel').scrollTop=0;
+}
+function closeDetail(noHistory){
+  document.getElementById('detail-panel').classList.add('hidden');
+  document.getElementById('resize-handle').classList.add('hidden');
+  if(!noHistory)pushState({tab:currentTab,q:searchQuery||undefined});
+}
 
 // --- Keyboard ---
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDetail();if(e.key==='/'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)){e.preventDefault();document.getElementById('search').focus()}});
