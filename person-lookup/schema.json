@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PersonLookup",
+  "description": "Structured person/contact data matching Pipedrive CRM Kontakte conventions",
+  "type": "object",
+  "properties": {
+    "website_url": {
+      "type": "string",
+      "pattern": "^www\\.",
+      "description": "Source website WITHOUT protocol — e.g. 'www.ablo.at' (not 'https://www.ablo.at', not 'ablo.at')"
+    },
+    "source_page": {
+      "type": ["string", "null"],
+      "description": "Page URL where this person was found — e.g. 'https://www.ablo.at/team'"
+    },
+    "salutation": {
+      "type": ["string", "null"],
+      "enum": [null, "Herr", "Frau"],
+      "description": "Anrede — 'Herr' or 'Frau'. Infer from first name if not stated explicitly."
+    },
+    "title_prefix": {
+      "type": ["string", "null"],
+      "description": "Titel vorgestellt — academic/professional title before the name, e.g. 'Mag.', 'Dr.', 'DI', 'Ing.'"
+    },
+    "title_suffix": {
+      "type": ["string", "null"],
+      "description": "Titel nachgestellt — academic title after the name, e.g. 'MBA', 'MSc', 'BSc', 'PhD'"
+    },
+    "first_name": {
+      "type": ["string", "null"],
+      "description": "First / given name — properly capitalized, e.g. 'Christian' (not 'christian')"
+    },
+    "last_name": {
+      "type": ["string", "null"],
+      "description": "Last / family name — properly capitalized, e.g. 'Rauch' (not 'rauch')"
+    },
+    "full_name": {
+      "type": "string",
+      "description": "First + last name only, NO titles — properly capitalized, e.g. 'Christian Rauch' (not 'Mag. Christian Rauch', not 'christian rauch')"
+    },
+    "position": {
+      "type": ["string", "null"],
+      "description": "Position exactly as shown on business card, email signature, LinkedIn, or website — e.g. 'Geschäftsführer', 'Head of Sales', 'Prokurist'"
+    },
+    "role_category": {
+      "type": ["string", "null"],
+      "enum": [null, "C-Level", "VP / Director", "Head of Department", "Manager", "Team Lead", "Individual Contributor", "Board Member", "Owner / Founder", "Assistant / Secretary", "Other"],
+      "description": "Normalized role category — pick the closest match from the enum"
+    },
+    "is_decision_maker": {
+      "type": ["boolean", "null"],
+      "description": "true if this person is likely a decision maker (C-Level, VP, Director, Head of, Owner, Inhaber, Geschäftsführer, Prokurist, Vorstand, Aufsichtsrat, Board Member, Partner, Gesellschafter). false if clearly not. null if unclear."
+    },
+    "department": {
+      "type": ["string", "null"],
+      "description": "Department if mentioned — e.g. 'Sales', 'Engineering', 'Marketing', 'Finance', 'HR'"
+    },
+    "additional_roles": {
+      "type": ["string", "null"],
+      "description": "Weitere Funktionen — additional roles outside the company, e.g. 'Vorstand Netzwerk XY', 'Beirat Verein Z'"
+    },
+    "email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Email — all lowercase, no capital letters — e.g. 'cr@ablo.at' (not 'Cr@ablo.at')"
+    },
+    "phone_mobile": {
+      "type": ["string", "null"],
+      "pattern": "^\\+[0-9]+$",
+      "description": "Mobil — mobile/cell phone, +43 then digits, NO spaces, NO leading 0 — e.g. '+43664525488' (not '06644858', not '+43 664 824552')"
+    },
+    "phone_office": {
+      "type": ["string", "null"],
+      "pattern": "^\\+[0-9]+$",
+      "description": "Büro — office/landline phone with Durchwahl appended, +43 then digits, NO spaces — e.g. '+4312345678'"
+    },
+    "linkedin_url": {
+      "type": ["string", "null"],
+      "pattern": "^www\\.linkedin\\.com/in/",
+      "description": "Personal LinkedIn profile without protocol — e.g. 'www.linkedin.com/in/christian-rauch'. Must be /in/ personal profile, NOT /company/."
+    },
+    "label": {
+      "type": ["string", "null"],
+      "enum": [null, "Ansprechpartner", "Wrong Contact", "Lead", "Lieferant", "Händler", "Fachabteilung", "Marketing"],
+      "description": "Pipedrive person label — Ansprechpartner (permanent contact), Lead (general contact with potential), Fachabteilung (technical department contact), Marketing (receives marketing material), Wrong Contact, Lieferant, Händler"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence score: 0.0 = guess, 1.0 = certain"
+    }
+  },
+  "required": [
+    "website_url",
+    "source_page",
+    "salutation",
+    "title_prefix",
+    "title_suffix",
+    "first_name",
+    "last_name",
+    "full_name",
+    "position",
+    "role_category",
+    "is_decision_maker",
+    "department",
+    "additional_roles",
+    "email",
+    "phone_mobile",
+    "phone_office",
+    "linkedin_url",
+    "label",
+    "confidence"
+  ],
+  "additionalProperties": false
+}

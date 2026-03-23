@@ -3,23 +3,17 @@
  * Batch company lookup — reads input CSV, runs lookups in parallel, writes output CSV.
  *
  * Usage:
- *   npx tsx pi-company-lookup/batch.ts --in .work/data_in/orgs.csv --out .work/data_out/orgs.csv
- *   npx tsx pi-company-lookup/batch.ts --in data.csv --out out.csv --concurrency 10
- *   npx tsx pi-company-lookup/batch.ts --in data.csv --out out.csv --model openai/gpt-4o
+ *   npx tsx company-lookup/batch.ts --in .work/data_in/orgs.csv --out .work/data_out/orgs.csv
+ *   npx tsx company-lookup/batch.ts --in data.csv --out out.csv --concurrency 10
+ *   npx tsx company-lookup/batch.ts --in data.csv --out out.csv --model openai/gpt-4o
  */
 
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { csvHeader, csvRow, csvEmptyRow, parseCsvLine, SEP } from "./csv.ts";
-import {
-  AuthStorage,
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRegistry,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+import { csvHeader, csvRow, csvEmptyRow, parseCsvLine, SEP } from "../common-lib/csv.ts";
+import { createLlmContext, llmCall, parseJson, verifyUrl, type LlmContext } from "../common-lib/llm.ts";
+import { createLogger } from "../common-lib/log.ts";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const schema = JSON.parse(readFileSync(resolve(dir, "schema.json"), "utf-8"));
@@ -58,88 +52,33 @@ Output: CSV file or JSON array`);
   }
 }
 
-// --- Logging ---
-function log(entry: Record<string, unknown>) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-  appendFileSync(logFile, line + "\n");
-}
-
 if (!inFile || !outFile) {
   console.error("Error: --in and --out required. Use --help.");
   process.exit(1);
 }
 
+const log = createLogger(logFile, "company-lookup");
+
 // --- Helpers ---
-async function verifyUrl(url: string): Promise<boolean> {
-  const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+async function lookupOne(query: string, ctx: LlmContext): Promise<Record<string, unknown> | null> {
+  const systemPrompt = [
+    "You are a company data lookup service.",
+    "Return ONLY a raw JSON object matching this schema:",
+    JSON.stringify(schema, null, 2),
+    "All fields required. Use null for unknowns.",
+    "No markdown fences, no explanation, just the JSON.",
+  ].join("\n");
+
+  let response: string;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    const res = await fetch(fullUrl, { method: "HEAD", redirect: "follow", signal: ctrl.signal });
-    clearTimeout(timer);
-    return res.status < 400;
+    response = await llmCall(systemPrompt, `Look up: ${query}`, ctx);
   } catch {
-    return false;
-  }
-}
-
-async function lookupOne(
-  query: string,
-  authStorage: AuthStorage,
-  modelRegistry: ModelRegistry,
-  model: any
-): Promise<Record<string, unknown> | null> {
-  const loader = new DefaultResourceLoader({
-    cwd: process.cwd(),
-    settingsManager: SettingsManager.inMemory(),
-    disableExtensions: true,
-    disableSkills: true,
-    disablePromptTemplates: true,
-    disableThemes: true,
-    disableAgentsFiles: true,
-    systemPromptOverride: () => [
-      "You are a company data lookup service.",
-      "Return ONLY a raw JSON object matching this schema:",
-      JSON.stringify(schema, null, 2),
-      "All fields required. Use null for unknowns.",
-      "No markdown fences, no explanation, just the JSON.",
-    ].join("\n"),
-  });
-  await loader.reload();
-
-  const { session } = await createAgentSession({
-    model,
-    thinkingLevel: "off",
-    authStorage,
-    modelRegistry,
-    sessionManager: SessionManager.inMemory(),
-    settingsManager: SettingsManager.inMemory(),
-    resourceLoader: loader,
-    tools: [],
-  });
-
-  let response = "";
-  session.subscribe((event) => {
-    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-      response += event.assistantMessageEvent.delta;
-    }
-  });
-
-  try {
-    await session.prompt(`Look up: ${query}`);
-  } catch (e) {
-    session.dispose();
     return null;
   }
-  session.dispose();
-
-  let jsonStr = response.trim();
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenceMatch) jsonStr = fenceMatch[1].trim();
 
   let data: Record<string, unknown>;
   try {
-    data = JSON.parse(jsonStr);
+    data = parseJson(response);
   } catch {
     return null;
   }
@@ -164,17 +103,9 @@ async function main() {
   const total = lines.length;
   console.error(`Processing ${total} companies, concurrency=${concurrency}, model=${modelSpec}`);
 
-  mkdirSync(dirname(resolve(logFile)), { recursive: true });
   log({ event: "batch_start", inFile, outFile, format, total, concurrency, model: modelSpec });
 
-  const authStorage = AuthStorage.create();
-  const modelRegistry = new ModelRegistry(authStorage);
-  const [provider, ...idParts] = modelSpec.split("/");
-  const model = modelRegistry.find(provider, idParts.join("/"));
-  if (!model) {
-    console.error(`Model "${modelSpec}" not found.`);
-    process.exit(1);
-  }
+  const ctx = createLlmContext(modelSpec);
 
   // Resume: read existing org_names from output file
   const doneNames = new Set<string>();
@@ -182,8 +113,7 @@ async function main() {
   if (existsSync(outFile)) {
     const existing = readFileSync(outFile, "utf-8").trim();
     if (format === "csv") {
-      // Parse CSV (semicolon-separated): org_name is first column after header
-      const csvLines = existing.split("\n").slice(1); // skip header
+      const csvLines = existing.split("\n").slice(1);
       for (const line of csvLines) {
         if (!line.trim()) continue;
         const fields = parseCsvLine(line, SEP);
@@ -199,7 +129,6 @@ async function main() {
           }
         }
       } catch {
-        // Incomplete JSON array (interrupted) — parse line by line
         for (const line of existing.split("\n")) {
           try {
             const obj = JSON.parse(line.replace(/^,/, ""));
@@ -214,10 +143,7 @@ async function main() {
     }
   }
 
-  // Filter to only lines not yet processed
   const remaining = lines.filter((line) => {
-    // Try to match input line against done org_names
-    // Input is freeform text, so check if any done name is a prefix of the line
     for (const name of doneNames) {
       if (line.startsWith(name) || line.trim().startsWith(name)) return false;
     }
@@ -236,7 +162,6 @@ async function main() {
     }
   }
 
-  // Process in batches
   let done = doneNames.size;
   let jsonCount = doneNames.size;
 
@@ -247,7 +172,7 @@ async function main() {
     let data: Record<string, unknown> | null = null;
 
     try {
-      data = await lookupOne(line.trim(), authStorage, modelRegistry, model);
+      data = await lookupOne(line.trim(), ctx);
       done++;
       const ms = Date.now() - t0;
       const pct = ((done / total) * 100).toFixed(1);
@@ -293,13 +218,12 @@ async function main() {
   }
   await Promise.all(pending);
 
-  // Close JSON array
   if (format === "json") {
     writeFileSync(outFile, "\n]\n", { flag: "a" });
   }
 
   console.error(`\nDone. ${done} rows written to ${outFile}`);
-  log({ event: "batch_end", total: done, outFile, logFile });
+  log({ event: "batch_end", total: done, outFile });
 }
 
 main().catch((e) => {

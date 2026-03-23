@@ -3,23 +3,17 @@
  * Retry lookup for orgs missing specific fields in the output CSV.
  *
  * Usage:
- *   npx tsx pi-company-lookup/retry.ts .work/data_out/orgs.csv
- *   npx tsx pi-company-lookup/retry.ts --field website_url --concurrency 10 orgs.csv
- *   npx tsx pi-company-lookup/retry.ts --field website_url --field phone orgs.csv
+ *   npx tsx company-lookup/retry.ts .work/data_out/orgs.csv
+ *   npx tsx company-lookup/retry.ts --field website_url --concurrency 10 orgs.csv
+ *   npx tsx company-lookup/retry.ts --field website_url --field phone orgs.csv
  */
 
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { escapeCsv, parseCsvLine, SEP, BOM, EOL } from "./csv.ts";
-import {
-  AuthStorage,
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRegistry,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+import { escapeCsv, parseCsvLine, SEP, BOM, EOL } from "../common-lib/csv.ts";
+import { createLlmContext, llmCall, parseJson, verifyUrl, type LlmContext } from "../common-lib/llm.ts";
+import { createLogger } from "../common-lib/log.ts";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const schema = JSON.parse(readFileSync(resolve(dir, "schema.json"), "utf-8"));
@@ -62,78 +56,26 @@ if (!file) {
   process.exit(1);
 }
 
-// CSV parsing and escaping imported from ./csv.ts
+// --- Helpers ---
+async function lookupOne(query: string, ctx: LlmContext): Promise<Record<string, unknown> | null> {
+  const systemPrompt = [
+    "You are a company data lookup service.",
+    "Return ONLY a raw JSON object matching this schema:",
+    JSON.stringify(schema, null, 2),
+    "All fields required. Use null for unknowns.",
+    "No markdown fences, no explanation, just the JSON.",
+  ].join("\n");
 
-async function verifyUrl(url: string): Promise<boolean> {
-  const fullUrl = url.startsWith("http") ? url : `https://${url}`;
+  let response: string;
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 5000);
-    const res = await fetch(fullUrl, { method: "HEAD", redirect: "follow", signal: ctrl.signal });
-    clearTimeout(timer);
-    return res.status < 400;
+    response = await llmCall(systemPrompt, `Look up: ${query}`, ctx);
   } catch {
-    return false;
-  }
-}
-
-async function lookupOne(
-  query: string,
-  authStorage: AuthStorage,
-  modelRegistry: ModelRegistry,
-  model: any
-): Promise<Record<string, unknown> | null> {
-  const loader = new DefaultResourceLoader({
-    cwd: process.cwd(),
-    settingsManager: SettingsManager.inMemory(),
-    disableExtensions: true,
-    disableSkills: true,
-    disablePromptTemplates: true,
-    disableThemes: true,
-    disableAgentsFiles: true,
-    systemPromptOverride: () => [
-      "You are a company data lookup service.",
-      "Return ONLY a raw JSON object matching this schema:",
-      JSON.stringify(schema, null, 2),
-      "All fields required. Use null for unknowns.",
-      "No markdown fences, no explanation, just the JSON.",
-    ].join("\n"),
-  });
-  await loader.reload();
-
-  const { session } = await createAgentSession({
-    model,
-    thinkingLevel: "off",
-    authStorage,
-    modelRegistry,
-    sessionManager: SessionManager.inMemory(),
-    settingsManager: SettingsManager.inMemory(),
-    resourceLoader: loader,
-    tools: [],
-  });
-
-  let response = "";
-  session.subscribe((event) => {
-    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-      response += event.assistantMessageEvent.delta;
-    }
-  });
-
-  try {
-    await session.prompt(`Look up: ${query}`);
-  } catch {
-    session.dispose();
     return null;
   }
-  session.dispose();
-
-  let jsonStr = response.trim();
-  const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-  if (fenceMatch) jsonStr = fenceMatch[1].trim();
 
   let data: Record<string, unknown>;
   try {
-    data = JSON.parse(jsonStr);
+    data = parseJson(response);
   } catch {
     return null;
   }
@@ -152,13 +94,10 @@ async function lookupOne(
   return data;
 }
 
-function log(entry: Record<string, unknown>) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-  appendFileSync(logFile, line + "\n");
-}
-
 // --- Main ---
 async function main() {
+  const log = createLogger(logFile, "company-lookup");
+
   const content = readFileSync(file, "utf-8").replace(/^\uFEFF/, ""); // strip BOM
   const lines = content.split(/\r?\n/).filter((l) => l.trim());
   const header = lines[0];
@@ -196,17 +135,9 @@ async function main() {
     process.exit(0);
   }
 
-  mkdirSync(dirname(resolve(logFile)), { recursive: true });
   log({ event: "retry_start", file, fields, missing: missing.length, concurrency, model: modelSpec });
 
-  const authStorage = AuthStorage.create();
-  const modelRegistry = new ModelRegistry(authStorage);
-  const [provider, ...idParts] = modelSpec.split("/");
-  const model = modelRegistry.find(provider, idParts.join("/"));
-  if (!model) {
-    console.error(`Model "${modelSpec}" not found.`);
-    process.exit(1);
-  }
+  const ctx = createLlmContext(modelSpec);
 
   let updated = 0;
   let retryDone = 0;
@@ -215,7 +146,7 @@ async function main() {
     const name = row[orgNameIdx] || query;
     const t0 = Date.now();
     try {
-      const data = await lookupOne(query, authStorage, modelRegistry, model);
+      const data = await lookupOne(query, ctx);
       retryDone++;
       const ms = Date.now() - t0;
 

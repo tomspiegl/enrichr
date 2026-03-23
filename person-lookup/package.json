@@ -1,14 +1,14 @@
 {
-  "name": "@tomspiegl/enrichr-company-lookup",
+  "name": "@tomspiegl/enrichr-person-lookup",
   "version": "0.1.0",
   "type": "module",
-  "description": "Company data enrichment — lookup by name/address, returns structured JSON or Excel-compatible CSV",
+  "description": "Person/contact enrichment — crawls company websites, extracts contacts for Pipedrive CRM",
   "keywords": ["pi-package"],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/tomspiegl/enrichr",
-    "directory": "pi-company-lookup"
+    "directory": "person-lookup"
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "*"

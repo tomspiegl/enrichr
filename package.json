@@ -1,0 +1,16 @@
+{
+  "name": "@tomspiegl/enrichr",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Company & person enrichment pipeline for Pipedrive CRM",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomspiegl/enrichr"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "playwright": "^1.58.2"
+  }
+}
