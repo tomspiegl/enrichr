@@ -1,0 +1,16 @@
+{
+  "name": "@tomspiegl/pi-company-lookup",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Company data enrichment — lookup by name/address, returns structured JSON or Excel-compatible CSV",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomspiegl/enrichr",
+    "directory": "pi-company-lookup"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

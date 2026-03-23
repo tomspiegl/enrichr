@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompanyLookup",
+  "description": "Structured company data matching CRM conventions",
+  "type": "object",
+  "properties": {
+    "org_name": {
+      "type": "string",
+      "description": "Official company name from Firmenbuch, including legal form (e.g. 'Acme GmbH', not 'Acme')"
+    },
+    "website_url": {
+      "type": ["string", "null"],
+      "pattern": "^www\\.",
+      "description": "Website WITHOUT protocol — e.g. 'www.ablo.at' (not 'https://www.ablo.at', not 'ablo.at')"
+    },
+    "address": {
+      "type": ["string", "null"],
+      "description": "Full address, street spelled out, with PLZ + city — e.g. 'Musterstraße 1, 1010 Wien, Österreich' (not abbreviated)"
+    },
+    "country": {
+      "type": ["string", "null"],
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code"
+    },
+    "industry": {
+      "type": ["string", "null"],
+      "description": "Primary Tätigkeitsfeld / industry sector"
+    },
+    "employee_count_range": {
+      "type": ["string", "null"],
+      "enum": [null, "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10001+"],
+      "description": "Anzahl der Mitarbeiter — pick the closest range from the enum values"
+    },
+    "legal_form": {
+      "type": ["string", "null"],
+      "description": "Rechtsform from Firmenbuch — e.g. GmbH, AG, KG, e.U., OG, KöR"
+    },
+    "uid": {
+      "type": ["string", "null"],
+      "pattern": "^ATU[0-9]+$",
+      "description": "Austrian UID/VAT number — format: 'ATU12345678' (no spaces, no prefix 'UID')"
+    },
+    "registry_number": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]+[a-z]$",
+      "description": "Firmenbuch FN number — digits + lowercase letter, NO 'FN' prefix — e.g. '524525t' (not 'FN 524525t')"
+    },
+    "phone": {
+      "type": ["string", "null"],
+      "pattern": "^\\+[0-9]+$",
+      "description": "Festnetz phone — +43 then digits, NO spaces, NO leading 0 — e.g. '+432256524'"
+    },
+    "email": {
+      "type": ["string", "null"],
+      "format": "email",
+      "description": "Company email — all lowercase, e.g. 'office@ablo.at'"
+    },
+    "linkedin_url": {
+      "type": ["string", "null"],
+      "pattern": "^www\\.linkedin\\.com/",
+      "description": "LinkedIn profile — e.g. 'www.linkedin.com/company/ablo-gmbh' (no https://)"
+    },
+    "label": {
+      "type": ["string", "null"],
+      "enum": [null, "Customer", "Warm Lead", "Hot Lead", "Cold Lead | AA", "Cold Lead | KV", "Cold Lead | KB", "Cold Lead | PV", "Lieferant", "Händler"],
+      "description": "Organization label"
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "1-2 sentence company description"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence score: 0.0 = guess, 1.0 = certain"
+    }
+  },
+  "required": [
+    "org_name",
+    "website_url",
+    "address",
+    "country",
+    "industry",
+    "employee_count_range",
+    "legal_form",
+    "uid",
+    "registry_number",
+    "phone",
+    "email",
+    "linkedin_url",
+    "label",
+    "description",
+    "confidence"
+  ],
+  "additionalProperties": false
+}
