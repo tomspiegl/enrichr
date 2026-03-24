@@ -1,4 +1,4 @@
-# Spotter
+# Enrichr
 
 Company data enrichment tool. Look up companies by name/address and get structured JSON or Excel-compatible CSV with website URLs, industry, contacts, and more.
 
