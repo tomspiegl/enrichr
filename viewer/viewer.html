@@ -62,6 +62,7 @@ tailwind.config = {
     <div class="flex gap-1 shrink-0">
       <button onclick="switchTab('orgs')" id="tab-orgs" class="tab-btn">🏢 Organizations</button>
       <button onclick="switchTab('persons')" id="tab-persons" class="tab-btn">👤 Persons</button>
+      <button onclick="switchTab('liPersons')" id="tab-liPersons" class="tab-btn">🔗 LinkedIn Persons</button>
     </div>
     <div class="flex-1 min-w-[180px] max-w-xl">
       <input id="search" type="text" placeholder="Search… ( / )"
@@ -85,6 +86,10 @@ tailwind.config = {
         <div>
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Persons CSV</label>
           <input type="file" id="persons-file" accept=".csv" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 dark:file:bg-brand-800 dark:file:text-brand-200 hover:file:bg-brand-100 dark:hover:file:bg-brand-700 cursor-pointer">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">LinkedIn Persons CSV <span class="text-gray-400">(optional)</span></label>
+          <input type="file" id="li-persons-file" accept=".csv" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 dark:file:bg-brand-800 dark:file:text-brand-200 hover:file:bg-brand-100 dark:hover:file:bg-brand-700 cursor-pointer">
         </div>
         <button onclick="onFilesSelected()" class="w-full py-2.5 px-4 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
           Load Data
@@ -145,7 +150,8 @@ const LI_SVG='<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path
 function linkedinLink(v,size){if(!v)return '';const u=v.startsWith('http')?v:'https://'+v;return `<a href="${esc(u)}" target="_blank" title="${esc(v)}" class="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">${LI_SVG}<span class="text-xs">LinkedIn</span></a>`}
 
 // --- State ---
-let orgs=[],persons=[],currentTab='orgs',searchQuery='',currentPage=1;
+let orgs=[],persons=[],liPersons=[],currentTab='orgs',searchQuery='',currentPage=1;
+let sortKey=null,sortAsc=true;
 let detailWidth=parseInt(localStorage.getItem('enrichr-detail-width'))||Math.round(window.innerWidth*0.4);
 const PAGE_SIZE=50;
 
@@ -179,6 +185,7 @@ function startResize(e){
 const ORG_COLS=[
   {key:'org_name',label:'Organization',w:'min-w-[200px]'},
   {key:'_pc',label:'👤',w:'w-12'},
+  {key:'_lipc',label:'🔗',w:'w-12'},
   {key:'website_url',label:'Website',w:'min-w-[160px]',link:true},
   {key:'_location',label:'Location',w:'min-w-[130px]'},
   {key:'industry',label:'Industry',w:'min-w-[140px]'},
@@ -192,8 +199,17 @@ const PERSON_COLS=[
   {key:'position',label:'Position',w:'min-w-[180px]'},
   {key:'role_category',label:'Role',w:'min-w-[140px]'},
   {key:'is_decision_maker',label:'DM',w:'min-w-[50px]',badge:true},
-  {key:'website_url',label:'Organization',w:'min-w-[160px]',orgLink:true},
+  {key:'org_id',label:'Organization',w:'min-w-[160px]',orgLink:true},
 
+  {key:'linkedin_url',label:'LinkedIn',w:'min-w-[140px]',link:true},
+  {key:'confidence',label:'Conf.',w:'min-w-[60px]'},
+];
+const LI_PERSON_COLS=[
+  {key:'full_name',label:'Name',w:'min-w-[160px]'},
+  {key:'position',label:'Position',w:'min-w-[180px]'},
+  {key:'role_category',label:'Role',w:'min-w-[140px]'},
+  {key:'is_decision_maker',label:'DM',w:'min-w-[50px]',badge:true},
+  {key:'org_id',label:'Organization',w:'min-w-[160px]',orgLink:true},
   {key:'linkedin_url',label:'LinkedIn',w:'min-w-[140px]',link:true},
   {key:'confidence',label:'Conf.',w:'min-w-[60px]'},
 ];
@@ -219,28 +235,40 @@ function parseLine(line,sep){
 
 // --- Data Loading ---
 async function loadData(){
-  if(typeof EMBEDDED_ORGS_CSV!=='undefined'&&typeof EMBEDDED_PERSONS_CSV!=='undefined'){applyData(EMBEDDED_ORGS_CSV,EMBEDDED_PERSONS_CSV);return}
-  // Try multiple paths (works from project root or .work/)
+  if(typeof EMBEDDED_ORGS_CSV!=='undefined'&&typeof EMBEDDED_PERSONS_CSV!=='undefined'){
+    const lip=typeof EMBEDDED_LI_PERSONS_CSV!=='undefined'?EMBEDDED_LI_PERSONS_CSV:'';
+    applyData(EMBEDDED_ORGS_CSV,EMBEDDED_PERSONS_CSV,lip);return;
+  }
   for(const base of ['.work/data_out/','data_out/','']){
-    try{const[o,p]=await Promise.all([fetch(base+'orgs.csv').then(r=>{if(!r.ok)throw 0;return r.text()}),fetch(base+'persons.csv').then(r=>{if(!r.ok)throw 0;return r.text()})]);applyData(o,p);return}catch{}
+    try{
+      const[o,p]=await Promise.all([fetch(base+'orgs.csv').then(r=>{if(!r.ok)throw 0;return r.text()}),fetch(base+'persons.csv').then(r=>{if(!r.ok)throw 0;return r.text()})]);
+      const lip=await fetch(base+'linkedin-persons.csv').then(r=>r.ok?r.text():'').catch(()=>'');
+      applyData(o,p,lip);return;
+    }catch{}
   }
   showFilePicker();
 }
-function applyData(o,p){
-  orgs=parseCsv(o);persons=parseCsv(p);
+function applyData(o,p,lip){
+  orgs=parseCsv(o);persons=parseCsv(p);liPersons=lip?parseCsv(lip):[];
   orgs.forEach(o=>{
-    o._pc=persons.filter(p=>p.website_url===o.website_url).length;
-    // Extract PLZ + city from address like "Straße 1, 2100 Korneuburg, Österreich"
+    o._pc=persons.filter(p=>p.org_id&&p.org_id===o.org_id).length;
+    o._lipc=liPersons.filter(p=>p.org_id&&p.org_id===o.org_id).length;
     if(o.address){const m=o.address.match(/(\d{4,5})\s+([^,]+)/);o._location=m?`${m[1]} ${m[2]}`:null}
   });
-  document.getElementById('stats').textContent=`${orgs.length} orgs · ${persons.length} persons`;
+  const stats=[`${orgs.length} orgs`,`${persons.length} persons`];
+  if(liPersons.length)stats.push(`${liPersons.length} LinkedIn`);
+  document.getElementById('stats').textContent=stats.join(' · ');
   document.getElementById('file-picker').classList.add('hidden');
   document.getElementById('content').classList.remove('hidden');
-  // Restore state from URL or render default
   if(location.hash)restoreState();else render();
 }
 function showFilePicker(){document.getElementById('file-picker').classList.remove('hidden');document.getElementById('content').classList.add('hidden')}
-function onFilesSelected(){const a=document.getElementById('orgs-file').files[0],b=document.getElementById('persons-file').files[0];if(!a||!b)return;Promise.all([a.text(),b.text()]).then(([o,p])=>applyData(o,p))}
+function onFilesSelected(){
+  const a=document.getElementById('orgs-file').files[0],b=document.getElementById('persons-file').files[0];if(!a||!b)return;
+  const c=document.getElementById('li-persons-file').files[0];
+  const files=[a.text(),b.text(),c?c.text():Promise.resolve('')];
+  Promise.all(files).then(([o,p,lip])=>applyData(o,p,lip));
+}
 
 // --- URL State ---
 function pushState(params){
@@ -259,36 +287,60 @@ function restoreState(){
   if(s.dw){detailWidth=parseInt(s.dw)||680;localStorage.setItem('enrichr-detail-width',detailWidth)}
   render();
   if(s.org)showOrgDetail(s.org,true);
-  else if(s.person&&s.site)showPersonDetailByKey(s.person,s.site,true);
+  else if(s.pid)showPersonDetailById(s.pid,true);
   else closeDetail(true);
 }
 window.addEventListener('popstate',()=>{if(orgs.length)restoreState()});
 
 // --- Tabs / Search ---
-function switchTab(t){currentTab=t;currentPage=1;searchQuery='';document.getElementById('search').value='';closeDetail(true);render();pushState({tab:t})}
+function switchTab(t){currentTab=t;currentPage=1;searchQuery='';sortKey=null;sortAsc=true;document.getElementById('search').value='';closeDetail(true);render();pushState({tab:t})}
+function toggleSort(key){if(sortKey===key){sortAsc=!sortAsc}else{sortKey=key;sortAsc=true}currentPage=1;render()}
 function onSearch(q){searchQuery=q.toLowerCase();currentPage=1;render();pushState({tab:currentTab,q:q||undefined})}
-function getFiltered(){const d=currentTab==='orgs'?orgs:persons;if(!searchQuery)return d;return d.filter(r=>Object.values(r).some(v=>v&&String(v).toLowerCase().includes(searchQuery)))}
+function getFiltered(){
+  let d=currentTab==='orgs'?orgs:currentTab==='liPersons'?liPersons:persons;
+  if(searchQuery)d=d.filter(r=>Object.values(r).some(v=>v&&String(v).toLowerCase().includes(searchQuery)));
+  if(sortKey){
+    d=[...d].sort((a,b)=>{
+      let va=a[sortKey]??'',vb=b[sortKey]??'';
+      // Numeric sort for numbers and counts
+      const na=parseFloat(va),nb=parseFloat(vb);
+      if(!isNaN(na)&&!isNaN(nb))return sortAsc?na-nb:nb-na;
+      // Boolean sort (true > false > null)
+      if(va==='true')va='1';if(va==='false')va='0';
+      if(vb==='true')vb='1';if(vb==='false')vb='0';
+      // String sort
+      va=String(va).toLowerCase();vb=String(vb).toLowerCase();
+      if(!va&&!vb)return 0;if(!va)return 1;if(!vb)return -1;
+      return sortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    });
+  }
+  return d;
+}
 
 // --- Table Render ---
 function render(){
-  ['orgs','persons'].forEach(t=>{
-    document.getElementById('tab-'+t).className=t===currentTab
+  ['orgs','persons','liPersons'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);if(!el)return;
+    el.className=t===currentTab
       ?'px-4 py-2 text-sm font-semibold rounded-lg bg-brand-50 text-brand-700 dark:bg-brand-800/30 dark:text-brand-200 transition-colors'
       :'px-4 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 transition-colors';
   });
-  const cols=currentTab==='orgs'?ORG_COLS:PERSON_COLS;
+  const cols=currentTab==='orgs'?ORG_COLS:currentTab==='liPersons'?LI_PERSON_COLS:PERSON_COLS;
   const fd=getFiltered(),tp=Math.ceil(fd.length/PAGE_SIZE),st=(currentPage-1)*PAGE_SIZE,pg=fd.slice(st,st+PAGE_SIZE);
-  const th='px-4 py-3 font-semibold text-xs uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400';
-  document.getElementById('table-head').innerHTML='<tr>'+(currentTab==='orgs'?`<th class="${th} w-12">#</th>`:'')+cols.map(c=>`<th class="${th} ${c.w||''}">${c.label}</th>`).join('')+'</tr>';
+  const th='px-4 py-3 font-semibold text-xs uppercase tracking-wider bg-gray-50 dark:bg-gray-800/80 text-gray-500 dark:text-gray-400 cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200 transition-colors';
+  document.getElementById('table-head').innerHTML='<tr>'+(currentTab==='orgs'?`<th class="${th} w-12">#</th>`:'')+cols.map(c=>{
+    const arrow=sortKey===c.key?(sortAsc?' ↑':' ↓'):'';
+    return `<th class="${th} ${c.w||''}" onclick="toggleSort('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('')+'</tr>';
   const tb=document.getElementById('table-body');
   if(!pg.length){tb.innerHTML=`<tr><td colspan="${cols.length+1}" class="px-6 py-16 text-center text-gray-400 dark:text-gray-600">No results</td></tr>`}
   else{tb.innerHTML=pg.map((row,i)=>{
     const cls='cursor-pointer hover:bg-brand-50/50 dark:hover:bg-brand-900/10';
-    const orgKey=row.website_url||row.org_name||'';
+    const orgKey=row.org_id||row.website_url||row.org_name||'';
     const oc=currentTab==='orgs'?`onclick="showOrgDetail('${esc(orgKey)}')"`:`onclick="showPersonDetail(${st+i})"`;
-    return `<tr class="${cls} transition-colors border-b border-gray-100 dark:border-gray-800/50" ${oc}>`+(currentTab==='orgs'?`<td class="px-4 py-3 text-gray-400 dark:text-gray-600 text-xs font-mono">${st+i+1}</td>`:'')+cols.map(c=>`<td class="px-4 py-3 ${c.w||''} truncate-cell" title="${esc(row[c.key])}">${fc(row[c.key],c,row)}</td>`).join('')+'</tr>'
+    return `<tr class="${cls} transition-colors border-b border-gray-100 dark:border-gray-800/50" ${oc}>`+(currentTab==='orgs'?`<td class="px-4 py-3 text-gray-400 dark:text-gray-600 text-xs font-mono">${st+i+1}</td>`:'')+cols.map(c=>`<td class="px-4 py-3 ${c.w||''} truncate-cell" title="${esc(row[c.key])}">${fc(row[c.key],c,row)}</td>`).join('')+'</tr>';
   }).join('')}
-  document.getElementById('filter-info').textContent=searchQuery?`${fd.length} of ${(currentTab==='orgs'?orgs:persons).length}`:'';
+  document.getElementById('filter-info').textContent=searchQuery?`${fd.length} of ${(currentTab==='orgs'?orgs:currentTab==='liPersons'?liPersons:persons).length}`:'';
   const pa=document.getElementById('pagination');
   if(tp<=1){pa.innerHTML=`<span>${fd.length} results</span><span></span>`}
   else{const bc='px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed text-sm transition-colors';
@@ -305,8 +357,8 @@ function fc(v,col,row){
   }
   if(col.key==='confidence'){const n=parseFloat(v);if(isNaN(n))return esc(v);const c=n>=0.8?'bg-green-400 dark:bg-green-500':n>=0.5?'bg-yellow-400 dark:bg-yellow-500':'bg-red-400 dark:bg-red-500';return `<div class="flex items-center gap-2"><div class="w-14 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"><div class="${c} h-full rounded-full" style="width:${n*100}%"></div></div><span class="text-xs text-gray-400">${n.toFixed(1)}</span></div>`}
   if(col.key==='org_name'&&currentTab==='orgs'){return `<span class="font-semibold">${esc(v)}</span>`}
-  if(col.key==='_pc'){return v>0?`<span class="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-xs font-semibold bg-brand-100 text-brand-700 dark:bg-brand-800/40 dark:text-brand-200">${v}</span>`:'<span class="text-gray-300 dark:text-gray-700">—</span>'}
-  if(col.orgLink&&v){const o=orgs.find(o=>o.website_url===v);return `<a href="#" onclick="event.preventDefault();showOrgFromPersons('${esc(v)}')" class="text-brand-600 dark:text-brand-400 hover:underline font-medium">${esc(o?o.org_name:v.replace(/^www\./,''))}</a>`}
+  if(col.key==='_pc'||col.key==='_lipc'){return v>0?`<span class="inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-xs font-semibold ${col.key==='_lipc'?'bg-blue-100 text-blue-700 dark:bg-blue-800/40 dark:text-blue-200':'bg-brand-100 text-brand-700 dark:bg-brand-800/40 dark:text-brand-200'}">${v}</span>`:'<span class="text-gray-300 dark:text-gray-700">—</span>'}
+  if(col.orgLink){const oid=row.org_id;const o=oid?orgs.find(o=>o.org_id===oid):orgs.find(o=>o.website_url===v);const key=o?(o.org_id||o.website_url||o.org_name):'';return o?`<a href="#" onclick="event.preventDefault();showOrgDetail('${esc(key)}')" class="text-brand-600 dark:text-brand-400 hover:underline font-medium">${esc(o.org_name)}</a>`:v?`<span>${esc(v.replace(/^www\./,''))}</span>`:'<span class="text-gray-300 dark:text-gray-700">—</span>'}
   if(col.link&&v){const u=v.startsWith('http')?v:'https://'+v;
     if(col.key==='linkedin_url')return linkedinLink(v);
     return `<a href="${esc(u)}" target="_blank" class="text-brand-600 dark:text-brand-400 hover:underline">${esc(v.replace(/^https?:\/\//,'').replace(/^www\./,''))}</a>`}
@@ -316,10 +368,10 @@ function fc(v,col,row){
 
 // --- Org Detail ---
 function showOrgDetail(key,noHistory){
-  const org=orgs.find(o=>(o.website_url||o.org_name)===key);if(!org)return;
-  const url=org.website_url;
-  if(!noHistory)pushState({tab:currentTab,org:key});
-  document.getElementById('detail-title').textContent=org.org_name||url;
+  const org=orgs.find(o=>o.org_id===key||o.org_id===String(key)||(o.website_url||o.org_name)===key);if(!org)return;
+  const orgId=org.org_id;
+  if(!noHistory)pushState({tab:currentTab,org:orgId||key});
+  document.getElementById('detail-title').textContent=org.org_name||org.website_url;
   const subtitle=[org.industry,org.legal_form,org.employee_count_range?org.employee_count_range+' employees':null].filter(Boolean).join(' · ');
   document.getElementById('detail-subtitle').textContent=subtitle;
 
@@ -342,7 +394,7 @@ function showOrgDetail(key,noHistory){
   html+='</div>';
 
   // Persons - split into decision makers and others
-  const linked=persons.filter(p=>p.website_url===url);
+  const linked=persons.filter(p=>orgId&&p.org_id===orgId||(org.website_url&&p.website_url===org.website_url));
   const dms=linked.filter(p=>p.is_decision_maker==='true');
   const others=linked.filter(p=>p.is_decision_maker!=='true');
   const countText=linked.length?`${linked.length} person${linked.length>1?'s':''}`:'';
@@ -360,28 +412,51 @@ function showOrgDetail(key,noHistory){
     }
   }
   html+='</div>';
+
+  // LinkedIn Persons
+  const liLinked=liPersons.filter(p=>orgId&&p.org_id===orgId||(org.website_url&&p.website_url===org.website_url));
+  if(liLinked.length){
+    const liDms=liLinked.filter(p=>p.is_decision_maker==='true');
+    const liOthers=liLinked.filter(p=>p.is_decision_maker!=='true');
+    html+=`<div class="px-5 py-4 border-t border-gray-100 dark:border-gray-800"><div class="flex items-center justify-between mb-3"><h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">🔗 LinkedIn Persons</h3><span class="text-xs text-gray-400 dark:text-gray-500">${liLinked.length} found</span></div>`;
+    if(liDms.length){
+      html+=`<div class="mb-4"><div class="flex items-center gap-2 mb-3"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Decision Makers</span></div>`;
+      html+=`<div class="space-y-2">${liDms.map(p=>personCard(p,true)).join('')}</div></div>`;
+    }
+    if(liOthers.length){
+      html+=`<div><div class="flex items-center gap-2 mb-3"><span class="w-2 h-2 rounded-full bg-blue-400 dark:bg-blue-600"></span><span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Other LinkedIn Contacts</span></div>`;
+      html+=`<div class="space-y-2">${liOthers.map(p=>personCard(p,false)).join('')}</div></div>`;
+    }
+    html+='</div>';
+  }
+
   document.getElementById('detail-content').innerHTML=html;
   openDetailPanel();
 }
 
 // --- Person Detail ---
-function showPersonDetailByKey(name,site,noHistory){
-  const p=persons.find(x=>x.full_name===name&&x.website_url===site);
+function showPersonDetailById(id,noHistory){
+  const p=persons.find(x=>x.person_id===id||x.person_id===String(id));
+  if(!p)return;
+  _showPersonDetail(p,noHistory);
+}
+function showPersonDetailByKey(nameOrId,site,noHistory){
+  const p=persons.find(x=>x.person_id===nameOrId||x.person_id===String(nameOrId))||(site?persons.find(x=>x.full_name===nameOrId&&x.website_url===site):null);
   if(!p)return;
   _showPersonDetail(p,noHistory);
 }
 function showPersonDetail(idx){
   const fd=getFiltered();
   const p=fd[idx];if(!p)return;
-  _showPersonDetail(p);
+  _showPersonDetail(p,false,currentTab==='liPersons');
 }
-function _showPersonDetail(p,noHistory){
-  const org=orgs.find(o=>o.website_url===p.website_url);
+function _showPersonDetail(p,noHistory,isLi){
+  const org=p.org_id?orgs.find(o=>o.org_id===p.org_id):orgs.find(o=>o.website_url===p.website_url);
   const initials=((p.first_name||'')[0]||'')+((p.last_name||'')[0]||'');
   const dm=p.is_decision_maker==='true';
   const title=[p.title_prefix,p.title_suffix].filter(t=>t).join(' · ');
 
-  if(!noHistory)pushState({tab:currentTab,person:p.full_name,site:p.website_url});
+  if(!noHistory)pushState({tab:currentTab,pid:p.person_id});
   document.getElementById('detail-title').textContent=p.full_name||'Unknown';
   document.getElementById('detail-subtitle').textContent=[p.position,org?org.org_name:p.website_url].filter(Boolean).join(' · ');
 
@@ -419,7 +494,7 @@ function _showPersonDetail(p,noHistory){
   // Link to organization
   if(org){
     html+=`<div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800"><div class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Organization</div>`;
-    html+=`<a href="#" onclick="event.preventDefault();showOrgDetail('${esc(org.website_url||org.org_name)}')" class="inline-flex items-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline">🏢 ${esc(org.org_name)}</a>`;
+    html+=`<a href="#" onclick="event.preventDefault();showOrgDetail('${esc(org.org_id||org.website_url||org.org_name)}')" class="inline-flex items-center gap-2 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline">🏢 ${esc(org.org_name)}</a>`;
     if(org.industry)html+=`<span class="ml-2 text-xs text-gray-400 dark:text-gray-500">${esc(org.industry)}</span>`;
     html+=`</div>`;
   }
@@ -446,7 +521,7 @@ function personCard(p, isDm){
   const roleBadge=p.role_category?`<span class="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 font-medium">${esc(p.role_category)}</span>`:'';
   const deptBadge=p.department?`<span class="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium">${esc(p.department)}</span>`:'';
 
-  const clickAttr=`onclick="showPersonDetailByKey('${esc(p.full_name)}','${esc(p.website_url)}')" style="cursor:pointer"`;
+  const clickAttr=`onclick="showPersonDetailById('${esc(p.person_id)}')" style="cursor:pointer"`;
   return `<div class="rounded-xl border ${border} bg-white dark:bg-gray-900/60 hover:shadow-md transition-all duration-200 overflow-hidden" ${clickAttr}>
     <div class="p-4">
       <div class="flex items-start gap-3">
@@ -463,7 +538,7 @@ function personCard(p, isDm){
   </div>`;
 }
 
-function showOrgFromPersons(url){currentTab='orgs';currentPage=1;searchQuery='';document.getElementById('search').value='';render();showOrgDetail(url)}
+function showOrgFromPersons(key){currentTab='orgs';currentPage=1;searchQuery='';document.getElementById('search').value='';render();showOrgDetail(key)}
 function openDetailPanel(){
   document.getElementById('detail-panel').classList.remove('hidden');
   document.getElementById('resize-handle').classList.remove('hidden');

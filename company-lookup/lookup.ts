@@ -72,6 +72,9 @@ Examples:
     process.exit(1);
   }
 
+  // org_id is auto-assigned in batch mode, null in single lookup
+  data.org_id = data.org_id ?? null;
+
   // --- Verify URLs ---
   const URL_FIELDS = ["website_url", "linkedin_url"];
   await Promise.all(

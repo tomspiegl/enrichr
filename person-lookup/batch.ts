@@ -78,6 +78,8 @@ async function main() {
   // Handle CSV input: detect header with website column (works with company-batch output)
   // Support both semicolon (our output) and comma (common CSV) separators
   let websites: string[];
+  // Map website_url → org_id from input CSV (if available)
+  const orgIdMap = new Map<string, number>();
   const firstLine = lines[0] || "";
   const detectedSep = firstLine.includes(SEP) ? SEP : firstLine.includes(",") ? "," : null;
 
@@ -87,14 +89,24 @@ async function main() {
     const urlIdx = header.findIndex((h) =>
       h === "website_url" || h === "website" || h === "url" || h === "domain"
     );
+    const orgIdIdx = header.findIndex((h) => h === "org_id");
     if (urlIdx !== -1) {
       console.error(`Detected CSV (sep='${detectedSep === "," ? "," : ";"}') with '${header[urlIdx]}' column (index ${urlIdx})`);
       websites = lines.slice(1)
-        .map((l) => parseCsvLine(l, detectedSep)[urlIdx]?.trim())
-        .filter((w) => w && w.length > 0 && w.toLowerCase() !== "null");
+        .map((l) => {
+          const fields = parseCsvLine(l, detectedSep);
+          const url = fields[urlIdx]?.trim();
+          // Build org_id lookup if org_id column exists
+          if (orgIdIdx !== -1 && url && url.toLowerCase() !== "null") {
+            const id = parseInt(fields[orgIdIdx]?.trim());
+            if (!isNaN(id)) orgIdMap.set(url, id);
+          }
+          return url;
+        })
+        .filter((w): w is string => !!w && w.length > 0 && w.toLowerCase() !== "null");
     } else {
       // CSV but no matching header — treat first column as URL
-      websites = lines.map((l) => parseCsvLine(l, detectedSep)[0]?.trim()).filter((w) => w && w.length > 0);
+      websites = lines.map((l) => parseCsvLine(l, detectedSep)[0]?.trim()).filter((w): w is string => !!w && w.length > 0);
     }
   } else {
     // Plain text: one URL per line
@@ -166,6 +178,21 @@ async function main() {
     }
   }
 
+  // person_id auto-increment: start after max existing ID
+  let nextPersonId = 1;
+  if (existsSync(outFile) && format === "csv") {
+    const existing = readFileSync(outFile, "utf-8").replace(/^\uFEFF/, "").trim();
+    const outHeader = parseCsvLine(existing.split(/\r?\n/)[0], SEP);
+    const pidIdx = outHeader.findIndex(h => h.trim() === "person_id");
+    if (pidIdx !== -1) {
+      for (const line of existing.split(/\r?\n/).slice(1)) {
+        if (!line.trim()) continue;
+        const val = parseInt(parseCsvLine(line, SEP)[pidIdx]?.trim());
+        if (!isNaN(val) && val >= nextPersonId) nextPersonId = val + 1;
+      }
+    }
+  }
+
   let done = websites.length - remaining.length;
   let jsonCount = doneUrls.size;
   let totalPersons = 0;
@@ -193,10 +220,18 @@ async function main() {
         used_playwright: d?.usedPlaywright ?? false,
       });
 
+      // Assign person_id and org_id
+      const websiteNorm = website.replace(/^https?:\/\//, "");
+      const resolvedOrgId = orgIdMap.get(websiteNorm) ?? orgIdMap.get(`www.${websiteNorm}`) ?? orgIdMap.get(websiteNorm.replace(/^www\./, "")) ?? null;
+      for (const person of persons) {
+        person.person_id = nextPersonId++;
+        person.org_id = resolvedOrgId;
+      }
+
       // Write results
       if (format === "csv") {
         if (persons.length === 0) {
-          const empty: Record<string, unknown> = { website_url: website };
+          const empty: Record<string, unknown> = { website_url: website, person_id: null, org_id: resolvedOrgId };
           appendFileSync(outFile, csvRow(schemaFields, empty));
         } else {
           for (const person of persons) {

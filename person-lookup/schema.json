@@ -4,6 +4,14 @@
   "description": "Structured person/contact data matching Pipedrive CRM Kontakte conventions",
   "type": "object",
   "properties": {
+    "person_id": {
+      "type": ["integer", "null"],
+      "description": "Unique person ID — auto-assigned, not filled by LLM"
+    },
+    "org_id": {
+      "type": ["integer", "null"],
+      "description": "Foreign key to organization — auto-assigned from orgs data, not filled by LLM"
+    },
     "website_url": {
       "type": "string",
       "pattern": "^www\\.",
@@ -92,6 +100,8 @@
     }
   },
   "required": [
+    "person_id",
+    "org_id",
     "website_url",
     "source_page",
     "salutation",

@@ -4,6 +4,10 @@
   "description": "Structured company data matching CRM conventions",
   "type": "object",
   "properties": {
+    "org_id": {
+      "type": ["integer", "null"],
+      "description": "Unique organization ID — auto-assigned, not filled by LLM"
+    },
     "org_name": {
       "type": "string",
       "description": "Official company name from Firmenbuch, including legal form (e.g. 'Acme GmbH', not 'Acme')"
@@ -74,9 +78,14 @@
       "minimum": 0.0,
       "maximum": 1.0,
       "description": "Confidence score: 0.0 = guess, 1.0 = certain"
+    },
+    "linkedin_scraped_at": {
+      "type": ["string", "null"],
+      "description": "ISO timestamp of last LinkedIn people scrape — auto-set by linkedin-persons batch, not filled by LLM"
     }
   },
   "required": [
+    "org_id",
     "org_name",
     "website_url",
     "address",
@@ -91,7 +100,8 @@
     "linkedin_url",
     "label",
     "description",
-    "confidence"
+    "confidence",
+    "linkedin_scraped_at"
   ],
   "additionalProperties": false
 }

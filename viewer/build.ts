@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 const DEFAULTS = {
   orgs: ".work/data_out/orgs.csv",
   persons: ".work/data_out/persons.csv",
+  liPersons: ".work/data_out/linkedin-persons.csv",
   template: "viewer/viewer.html",
   out: ".work/data_out/viewer.html",
 };
@@ -30,21 +31,22 @@ async function main() {
   const args = process.argv.slice(2);
   let orgsFile = DEFAULTS.orgs;
   let personsFile = DEFAULTS.persons;
+  let liPersonsFile = DEFAULTS.liPersons;
   let templateFile = DEFAULTS.template;
   let outFile = DEFAULTS.out;
 
   if (args.length > 0) {
-    // CLI mode: parse flags
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--orgs" && args[i + 1]) orgsFile = args[++i];
       else if (args[i] === "--persons" && args[i + 1]) personsFile = args[++i];
+      else if (args[i] === "--li-persons" && args[i + 1]) liPersonsFile = args[++i];
       else if (args[i] === "--template" && args[i + 1]) templateFile = args[++i];
       else if (args[i] === "--out" && args[i + 1]) outFile = args[++i];
     }
   } else {
-    // Interactive mode: prompt with defaults
     orgsFile = await ask("Organizations CSV", DEFAULTS.orgs);
     personsFile = await ask("Persons CSV", DEFAULTS.persons);
+    liPersonsFile = await ask("LinkedIn Persons CSV (optional)", DEFAULTS.liPersons);
     outFile = await ask("Output HTML", DEFAULTS.out);
   }
 
@@ -55,14 +57,16 @@ async function main() {
 
   const orgsText = readFileSync(orgsFile, "utf-8");
   const personsText = readFileSync(personsFile, "utf-8");
+  const liPersonsText = existsSync(liPersonsFile) ? readFileSync(liPersonsFile, "utf-8") : "";
   const template = readFileSync(templateFile, "utf-8");
 
   const BEGIN_MARKER = '<!--ENRICHR_DATA_BEGIN-->';
   const END_MARKER = '<!--ENRICHR_DATA_END-->';
+  const liBlock = liPersonsText ? `\nconst EMBEDDED_LI_PERSONS_CSV = ${JSON.stringify(liPersonsText)};` : "";
   const dataBlock = `${BEGIN_MARKER}
 <script>
 const EMBEDDED_ORGS_CSV = ${JSON.stringify(orgsText)};
-const EMBEDDED_PERSONS_CSV = ${JSON.stringify(personsText)};
+const EMBEDDED_PERSONS_CSV = ${JSON.stringify(personsText)};${liBlock}
 </script>
 ${END_MARKER}`;
 
@@ -76,7 +80,9 @@ ${END_MARKER}`;
   const sizeMb = (Buffer.byteLength(html) / 1024 / 1024).toFixed(1);
   const orgLines = orgsText.split("\n").length - 1;
   const personLines = personsText.split("\n").length - 1;
-  console.log(`Built ${outFile} (${sizeMb} MB) with ${orgLines} orgs + ${personLines} persons`);
+  const liLines = liPersonsText ? liPersonsText.split("\n").length - 1 : 0;
+  const liInfo = liLines > 0 ? ` + ${liLines} LinkedIn persons` : "";
+  console.log(`Built ${outFile} (${sizeMb} MB) with ${orgLines} orgs + ${personLines} persons${liInfo}`);
 }
 
 main();

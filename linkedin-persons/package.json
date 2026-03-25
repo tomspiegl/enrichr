@@ -1,0 +1,16 @@
+{
+  "name": "@tomspiegl/enrichr-linkedin-persons",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "LinkedIn org people scraper — uses Chrome profile to browse LinkedIn, extracts and filters persons",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tomspiegl/enrichr",
+    "directory": "linkedin-persons"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

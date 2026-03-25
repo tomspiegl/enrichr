@@ -290,7 +290,7 @@ async function fallbackKnowledgeLookup(
     const response = await llmCall(prompt, `Company website: ${websiteUrl}\n\nReturn known key persons for this company.`, ctx);
     const arr = parseJson(response);
     if (!Array.isArray(arr)) return [];
-    return arr.map((p: any) => ({ ...p, website_url: p.website_url || websiteUrl }));
+    return arr.map((p: any) => ({ person_id: null, org_id: null, ...p, website_url: p.website_url || websiteUrl }));
   } catch (e) {
     if (verbose) console.error(`  ✗ Fallback lookup failed: ${e instanceof Error ? e.message : e}`);
     return [];
@@ -345,7 +345,7 @@ async function extractPersonsFromPages(
       if (verbose) console.error(`  ⚠ LLM returned [] despite ${totalLen} chars of content`);
     }
     // Ensure website_url is set on every record
-    return arr.map((p: any) => ({ ...p, website_url: p.website_url || websiteUrl }));
+    return arr.map((p: any) => ({ person_id: null, org_id: null, ...p, website_url: p.website_url || websiteUrl }));
   } catch {
     if (verbose) console.error(`  ✗ Failed to parse extraction response: ${response.slice(0, 200)}`);
     return [];

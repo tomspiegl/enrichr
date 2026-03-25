@@ -162,6 +162,22 @@ async function main() {
     }
   }
 
+  // org_id auto-increment: start after max existing ID
+  let nextOrgId = 1;
+  if (existsSync(outFile) && format === "csv") {
+    const existing = readFileSync(outFile, "utf-8").replace(/^\uFEFF/, "").trim();
+    const csvLines = existing.split(/\r?\n/).slice(1);
+    const header = parseCsvLine(existing.split(/\r?\n/)[0], SEP);
+    const idIdx = header.findIndex(h => h.trim() === "org_id");
+    if (idIdx !== -1) {
+      for (const line of csvLines) {
+        if (!line.trim()) continue;
+        const val = parseInt(parseCsvLine(line, SEP)[idIdx]?.trim());
+        if (!isNaN(val) && val >= nextOrgId) nextOrgId = val + 1;
+      }
+    }
+  }
+
   let done = doneNames.size;
   let jsonCount = doneNames.size;
 
@@ -193,6 +209,11 @@ async function main() {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[${done}/${total}] ${name} ✗ error`);
       log({ event: "lookup", index: done, query: line.trim(), status: "error", error: msg, duration_ms: ms });
+    }
+
+    // Assign org_id
+    if (data) {
+      data.org_id = nextOrgId++;
     }
 
     // Write result immediately
